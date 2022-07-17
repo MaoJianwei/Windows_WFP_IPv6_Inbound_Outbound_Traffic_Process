@@ -618,9 +618,11 @@ HANDLE maoEngineHandle = NULL;
 
 UINT32 maoWpsInboundCalloutId = 0;
 UINT32 maoWpmInboundCalloutId = 0;
-
 UINT64 maoWpmInboundFilterId = 0;
-//UINT32 maoWpmOutboundFilterId = 0;
+
+UINT32 maoWpsOutboundCalloutId = 0;
+UINT32 maoWpmOutboundCalloutId = 0;
+UINT64 maoWpmOutboundFilterId = 0;
 
 
 void MaoAPN_InboundClassifyFn(
@@ -675,6 +677,80 @@ NTSTATUS MaoAPN_InboundNotifyFn(
     filter;
     return 0;
 }
+
+
+
+
+void MaoAPN_OutboundClassifyFn(
+    _In_ const FWPS_INCOMING_VALUES* inFixedValues,
+    _In_ const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    _Inout_opt_ void* layerData,
+    _In_opt_ const void* classifyContext,
+    _In_ const FWPS_FILTER* filter,
+    _In_ UINT64 flowContext,
+    _Inout_ FWPS_CLASSIFY_OUT* classifyOut
+)
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> MaoAPN_OutboundClassifyFn: count %d, flowContext %d\n",
+        ++debugCount, flowContext);
+
+
+    classifyOut->actionType = FWP_ACTION_PERMIT;
+
+
+    //
+    // We don't have the necessary right to alter the packet.
+    //
+    if ((classifyOut->rights & FWPS_RIGHT_ACTION_WRITE) == 0)
+    {
+        return;
+    }
+
+    UNREFERENCED_PARAMETER(inFixedValues);
+    UNREFERENCED_PARAMETER(inMetaValues);
+    UNREFERENCED_PARAMETER(layerData);
+    UNREFERENCED_PARAMETER(classifyContext);
+    UNREFERENCED_PARAMETER(filter);
+    UNREFERENCED_PARAMETER(classifyOut);
+}
+
+void MaoAPN_OutboundFlowDeleteFn(
+    _In_ UINT16 layerId,
+    _In_ UINT32 calloutId,
+    _In_ UINT64 flowContext
+)
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> MaoAPN_OutboundFlowDeleteFn: layerId %d, calloutId %d, flowContext %d\n",
+        layerId, calloutId, flowContext
+    );
+
+}
+
+NTSTATUS MaoAPN_OutboundNotifyFn(
+    _In_ FWPS_CALLOUT_NOTIFY_TYPE notifyType,
+    _In_ const GUID* filterKey,
+    _Inout_ FWPS_FILTER* filter
+)
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> MaoAPN_OutboundNotifyFn: notifyType %d\n",
+        notifyType);
+
+
+    filterKey;
+    filter;
+    return 0;
+}
+
+
+
+
+
+
+
+
 
 NTSTATUS
 MaoRegisterCallouts(
@@ -776,10 +852,10 @@ MaoRegisterCallouts(
 
 
         FWPM_FILTER_CONDITION filterConditions[3] = { 0 };
-        filterConditions[0].fieldKey = FWPM_CONDITION_INTERFACE_TYPE;
-        filterConditions[0].matchType = FWP_MATCH_NOT_EQUAL;
-        filterConditions[0].conditionValue.type = FWP_UINT8;
-        filterConditions[0].conditionValue.uint8 = FWP_CONDITION_FLAG_IS_LOOPBACK;
+        //filterConditions[0].fieldKey = FWPM_CONDITION_INTERFACE_TYPE;
+        //filterConditions[0].matchType = FWP_MATCH_NOT_EQUAL;
+        //filterConditions[0].conditionValue.type = FWP_UINT8;
+        //filterConditions[0].conditionValue.uint8 = FWP_CONDITION_FLAG_IS_LOOPBACK;
 
         FWPM_FILTER filter = { 0 };
         filter.displayData.name = L"Mao_APN_Filter_Inbound_Name";
@@ -830,9 +906,107 @@ MaoRegisterCallouts(
 
 
 
-    {
-        // TODO: outbound
-    }
+    do {
+        // outbound
+
+        BOOLEAN wpsCalloutRegistered = FALSE;
+        BOOLEAN wpmCalloutRegistered = FALSE;
+        BOOLEAN wpmFilterRegistered = FALSE;
+
+
+
+        FWPS_CALLOUT wpsCallout = { 0 };
+        wpsCallout.calloutKey = Mao_APN_IPv6_Callout_Outbound;
+        wpsCallout.classifyFn = MaoAPN_OutboundClassifyFn;
+        wpsCallout.flowDeleteFn = MaoAPN_OutboundFlowDeleteFn;
+        wpsCallout.notifyFn = MaoAPN_OutboundNotifyFn;
+
+        FWPM_CALLOUT wpmCallout = { 0 };
+        wpmCallout.applicableLayer = FWPM_LAYER_OUTBOUND_IPPACKET_V6;
+        wpmCallout.calloutKey = Mao_APN_IPv6_Callout_Outbound;
+        wpmCallout.displayData.name = L"Mao_APN_IPv6_Callout_Outbound_NAME";
+        wpmCallout.displayData.description = L"Mao_APN_IPv6_Callout_Outbound_Description";
+
+        status = FwpsCalloutRegister(deviceObject, &wpsCallout, &maoWpsOutboundCalloutId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoOutboundError;
+        }
+        wpsCalloutRegistered = TRUE;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpsCalloutRegister --- maoWpsOutboundCalloutId %d, status %d\n",
+            maoWpsOutboundCalloutId, status);
+
+
+        status = FwpmCalloutAdd(maoEngineHandle, &wpmCallout, NULL, &maoWpmOutboundCalloutId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoOutboundError;
+        }
+        wpmCalloutRegistered = TRUE;
+
+
+
+        // =========== Add Filters ===========
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpmCalloutAdd --- maoWpmOutboundCalloutId %d, status %d\n",
+            maoWpmOutboundCalloutId, status);
+
+
+        FWPM_FILTER_CONDITION filterConditions[3] = { 0 };
+        //filterConditions[0].fieldKey = FWPM_CONDITION_INTERFACE_TYPE;
+        //filterConditions[0].matchType = FWP_MATCH_NOT_EQUAL;
+        //filterConditions[0].conditionValue.type = FWP_UINT8;
+        //filterConditions[0].conditionValue.uint8 = FWP_CONDITION_FLAG_IS_LOOPBACK;
+
+        FWPM_FILTER filter = { 0 };
+        filter.displayData.name = L"Mao_APN_Filter_Outbound_Name";
+        filter.displayData.description = L"Mao_APN_Filter_Outbound_Description";
+        filter.layerKey = FWPM_LAYER_OUTBOUND_IPPACKET_V6;
+        //filter.subLayerKey = ;
+        filter.filterCondition = filterConditions;
+        filter.numFilterConditions = 0;
+        filter.action.type = FWP_ACTION_CALLOUT_TERMINATING;
+        filter.action.calloutKey = Mao_APN_IPv6_Callout_Outbound;
+        filter.weight.type = FWP_EMPTY;
+        filter.rawContext = Mao_APN_Filter_Context_Outbound;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> to do FwpmFilterAdd ---\n");
+
+
+        status = FwpmFilterAdd(maoEngineHandle, &filter, NULL, &maoWpmOutboundFilterId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoOutboundError;
+        }
+        wpmFilterRegistered = TRUE;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpmFilterAdd --- maoWpmOutboundFilterId %d, status %d\n",
+            maoWpmOutboundFilterId, status);
+
+        // ===================================
+        break;
+
+    MaoOutboundError:
+        if (wpmFilterRegistered) {
+            FwpmFilterDeleteById(maoEngineHandle, maoWpmOutboundFilterId);
+            maoWpmOutboundFilterId = 0;
+        }
+        if (wpmCalloutRegistered) {
+            FwpmCalloutDeleteById(maoEngineHandle, maoWpmOutboundCalloutId);
+            maoWpmOutboundCalloutId = 0;
+        }
+        if (wpsCalloutRegistered) {
+            FwpsCalloutUnregisterById(maoWpsOutboundCalloutId);
+            maoWpsOutboundCalloutId = 0;
+        }
+        goto MaoError;
+
+    } while (0);
     
 
     // =======================================
@@ -863,6 +1037,10 @@ MaoUnregisterCallouts(void)
     status = FwpmFilterDeleteById(maoEngineHandle, maoWpmInboundFilterId);
     status = FwpmCalloutDeleteById(maoEngineHandle, maoWpmInboundCalloutId);
     status = FwpsCalloutUnregisterById(maoWpsInboundCalloutId);
+
+    status = FwpmFilterDeleteById(maoEngineHandle, maoWpmOutboundFilterId);
+    status = FwpmCalloutDeleteById(maoEngineHandle, maoWpmOutboundCalloutId);
+    status = FwpsCalloutUnregisterById(maoWpsOutboundCalloutId);
 
     status = FwpmEngineClose(maoEngineHandle);
     maoEngineHandle = NULL;
