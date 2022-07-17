@@ -1,0 +1,1 @@
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\x64\Debug\ddproxy.sys

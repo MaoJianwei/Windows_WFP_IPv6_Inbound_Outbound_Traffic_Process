@@ -1,0 +1,23 @@
+﻿  Building 'ddproxy' with toolset 'WindowsKernelModeDriver10.0' and the 'Desktop' target platform.
+  Stamping x64\Debug\ddproxy.inf
+  Stamping [Version] section with DriverVer=07/17/2022,20.12.5.622
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\ddproxy.inf : warning 1420: [DefaultInstall]-based INF cannot be processed as Primitive.
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\ddproxy.inf(27-27): warning 1421: Section [DefaultInstall] should have an architecture decoration.
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\ddproxy.inf(34-34): warning 1421: Section [DefaultUninstall] should have an architecture decoration.
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\ddproxy.inf(41-41): warning 1205: Section [DDProxy.DriverFiles] referenced from DelFiles and CopyFiles directive.
+E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\ddproxy.inf(57-57): warning 2083: Section [ddproxy.delregistry] not referenced or used.
+  ddproxy.vcxproj -> E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\x64\Debug\ddproxy.sys
+  .........................
+  Signability test complete.
+  
+  Errors:
+  None
+  
+  Warnings:
+  None
+  
+  Catalog generation complete.
+  E:\win10_driver_develop\Windows-driver-samples\network\trans\ddproxy\sys\x64\Debug\ddproxy\ddproxy.cat
+  Done Adding Additional Store
+  Successfully signed: x64\Debug\ddproxy\ddproxy.cat
+  
