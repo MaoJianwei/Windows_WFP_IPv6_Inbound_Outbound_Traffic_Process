@@ -18,7 +18,7 @@ Abstract:
       
     o  InspectUdp (REG_DWORD) : 0 (ICMP); 1 (UDP, default)
     o  DestinationAddressToIntercept (REG_SZ) : literal IPv4/IPv6 string 
-                                                (e.g. “10.0.0.1”)
+                                                (e.g. ?0.0.0.1?
     o  DestinationPortToIntercept (REG_DWORD) : applicable if InspectUdp is 1
     o  NewDestinationAddress(REG_SZ) : literal IPv4/IPv6 string
     o  NewDestinationPort(REG_DWORD)
@@ -576,6 +576,301 @@ Exit:
    return status;
 }
 
+
+
+
+
+
+
+
+
+// ======== Mao ============
+
+
+enum MaoApnFilterContext {
+    Mao_APN_Filter_Context_Inbound,
+    Mao_APN_Filter_Context_Outbound
+};
+
+
+DEFINE_GUID(
+    Mao_APN_IPv6_Callout_Inbound,
+    0x19940123,
+    0x2012,
+    0x2019,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+);
+
+DEFINE_GUID(
+    Mao_APN_IPv6_Callout_Outbound,
+    0x19940123,
+    0x7181,
+    0x5511,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+);
+
+
+UINT64 debugCount = 0;
+
+
+
+HANDLE maoEngineHandle = NULL;
+
+UINT32 maoWpsInboundCalloutId = 0;
+UINT32 maoWpmInboundCalloutId = 0;
+
+UINT64 maoWpmInboundFilterId = 0;
+//UINT32 maoWpmOutboundFilterId = 0;
+
+
+void MaoAPN_InboundClassifyFn(
+    _In_ const FWPS_INCOMING_VALUES* inFixedValues,
+    _In_ const FWPS_INCOMING_METADATA_VALUES* inMetaValues,
+    _Inout_opt_ void* layerData,
+    _In_opt_ const void* classifyContext,
+    _In_ const FWPS_FILTER* filter,
+    _In_ UINT64 flowContext,
+    _Inout_ FWPS_CLASSIFY_OUT* classifyOut
+)
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> MaoAPN_InboundClassifyFn: count %d, flowContext %d\n",
+        ++debugCount, flowContext);
+
+    classifyOut->actionType = FWP_ACTION_PERMIT;
+
+    inFixedValues;
+    inMetaValues;
+    layerData;
+    classifyContext;
+    filter;
+    classifyOut;
+}
+
+void MaoAPN_InboundFlowDeleteFn(
+    _In_ UINT16 layerId,
+    _In_ UINT32 calloutId,
+    _In_ UINT64 flowContext
+    )
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, 
+        "--> MaoAPN_InboundFlowDeleteFn: layerId %d, calloutId %d, flowContext %d\n",
+        layerId, calloutId, flowContext
+    );
+
+}
+
+NTSTATUS MaoAPN_InboundNotifyFn(
+    _In_ FWPS_CALLOUT_NOTIFY_TYPE notifyType,
+    _In_ const GUID* filterKey,
+    _Inout_ FWPS_FILTER* filter
+)
+{
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, 
+        "--> MaoAPN_InboundNotifyFn: notifyType %d\n",
+        notifyType);
+
+
+    filterKey;
+    filter;
+    return 0;
+}
+
+NTSTATUS
+MaoRegisterCallouts(
+    _Inout_ void* deviceObject
+)
+{
+    NTSTATUS status = STATUS_SUCCESS;
+
+    BOOLEAN engineOpened = FALSE;
+    BOOLEAN inTransection = FALSE;
+    
+
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> come in MaoRegisterCallouts --- %d\n",
+        status);
+
+
+    FWPM_SESSION session = {0};
+    status = FwpmEngineOpen(
+        NULL,
+        RPC_C_AUTHN_WINNT,
+        NULL,
+        &session,
+        &maoEngineHandle
+    );
+    if (!NT_SUCCESS(status)) {
+        goto MaoError;
+    }
+    engineOpened = TRUE;
+
+
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> done FwpmEngineOpen --- %d\n",
+        status);
+
+
+    status = FwpmTransactionBegin(maoEngineHandle, 0);
+    if (!NT_SUCCESS(status)) {
+        goto MaoError;
+    }
+    inTransection = TRUE;
+
+
+    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+        "--> done FwpmTransactionBegin --- %d\n",
+        status);
+
+
+    // Attention!!! Do we need sublayer?
+
+    // ========== Register Callouts ==========
+    // TODO: refactor it to be a function
+    do {
+        // inbound
+
+        BOOLEAN wpsCalloutRegistered = FALSE;
+        BOOLEAN wpmCalloutRegistered = FALSE;
+        BOOLEAN wpmFilterRegistered = FALSE;
+
+
+
+        FWPS_CALLOUT wpsCallout = { 0 };
+        wpsCallout.calloutKey = Mao_APN_IPv6_Callout_Inbound;
+        wpsCallout.classifyFn = MaoAPN_InboundClassifyFn;
+        wpsCallout.flowDeleteFn = MaoAPN_InboundFlowDeleteFn;
+        wpsCallout.notifyFn = MaoAPN_InboundNotifyFn;
+
+        FWPM_CALLOUT wpmCallout = { 0 };
+        wpmCallout.applicableLayer = FWPM_LAYER_INBOUND_IPPACKET_V6;
+        wpmCallout.calloutKey = Mao_APN_IPv6_Callout_Inbound;
+        wpmCallout.displayData.name = L"Mao_APN_IPv6_Callout_Inbound_NAME";
+        wpmCallout.displayData.description = L"Mao_APN_IPv6_Callout_Inbound_Description";
+
+        status = FwpsCalloutRegister(deviceObject, &wpsCallout, &maoWpsInboundCalloutId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoInboundError;
+        }
+        wpsCalloutRegistered = TRUE;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpsCalloutRegister --- maoWpsInboundCalloutId %d, status %d\n",
+            maoWpsInboundCalloutId, status);
+
+
+        status = FwpmCalloutAdd(maoEngineHandle, &wpmCallout, NULL, &maoWpmInboundCalloutId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoInboundError;
+        }
+        wpmCalloutRegistered = TRUE;
+        
+
+
+        // =========== Add Filters ===========
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpmCalloutAdd --- maoWpmInboundCalloutId %d, status %d\n",
+            maoWpmInboundCalloutId, status);
+
+
+        FWPM_FILTER_CONDITION filterConditions[3] = { 0 };
+        filterConditions[0].fieldKey = FWPM_CONDITION_INTERFACE_TYPE;
+        filterConditions[0].matchType = FWP_MATCH_NOT_EQUAL;
+        filterConditions[0].conditionValue.type = FWP_UINT8;
+        filterConditions[0].conditionValue.uint8 = FWP_CONDITION_FLAG_IS_LOOPBACK;
+
+        FWPM_FILTER filter = { 0 };
+        filter.displayData.name = L"Mao_APN_Filter_Inbound_Name";
+        filter.displayData.description = L"Mao_APN_Filter_Inbound_Description";
+        filter.layerKey = FWPM_LAYER_INBOUND_IPPACKET_V6;
+        //filter.subLayerKey = ;
+        filter.filterCondition = filterConditions;
+        filter.numFilterConditions = 0;
+        filter.action.type = FWP_ACTION_CALLOUT_TERMINATING;
+        filter.action.calloutKey = Mao_APN_IPv6_Callout_Inbound;
+        filter.weight.type = FWP_EMPTY;
+        filter.rawContext = Mao_APN_Filter_Context_Inbound;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> to do FwpmFilterAdd ---\n");
+
+
+        status = FwpmFilterAdd(maoEngineHandle, &filter, NULL, &maoWpmInboundFilterId);
+        if (!NT_SUCCESS(status)) {
+            goto MaoInboundError;
+        }
+        wpmFilterRegistered = TRUE;
+
+
+        DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL,
+            "--> done FwpmFilterAdd --- maoWpmInboundFilterId %d, status %d\n",
+            maoWpmInboundFilterId, status);
+
+        // ===================================
+        break;
+
+    MaoInboundError:
+        if (wpmFilterRegistered) {
+            FwpmFilterDeleteById(maoEngineHandle, maoWpmInboundFilterId);
+            maoWpmInboundFilterId = 0;
+        }
+        if (wpmCalloutRegistered) {
+            FwpmCalloutDeleteById(maoEngineHandle, maoWpmInboundCalloutId);
+            maoWpmInboundCalloutId = 0;
+        }
+        if (wpsCalloutRegistered) {
+            FwpsCalloutUnregisterById(maoWpsInboundCalloutId);
+            maoWpsInboundCalloutId = 0;
+        }
+        goto MaoError;
+    } while (0);
+
+
+
+    {
+        // TODO: outbound
+    }
+    
+
+    // =======================================
+
+
+    status = FwpmTransactionCommit(maoEngineHandle);
+    if (!NT_SUCCESS(status)) {
+        goto MaoError;
+    }
+    return status;
+
+MaoError:
+    if (inTransection) {
+        FwpmTransactionAbort(maoEngineHandle);
+    }
+
+    if (engineOpened) {
+        FwpmEngineClose(maoEngineHandle);
+        maoEngineHandle = NULL;
+    }
+    return status;
+}
+
+void
+MaoUnregisterCallouts(void)
+{
+    NTSTATUS status;
+    status = FwpmFilterDeleteById(maoEngineHandle, maoWpmInboundFilterId);
+    status = FwpmCalloutDeleteById(maoEngineHandle, maoWpmInboundCalloutId);
+    status = FwpsCalloutUnregisterById(maoWpsInboundCalloutId);
+
+    status = FwpmEngineClose(maoEngineHandle);
+    maoEngineHandle = NULL;
+}
+
+// =======================
+
+
 NTSTATUS
 DDProxyRegisterCallouts(
    _Inout_ void* deviceObject
@@ -776,6 +1071,9 @@ EvtDriverUnload(
 
    UNREFERENCED_PARAMETER(driverObject);
 
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> EvtDriverUnload\n");
+
+
    KeAcquireInStackQueuedSpinLock(
       &gPacketQueueLock,
       &packetQueueLockHandle
@@ -794,6 +1092,7 @@ EvtDriverUnload(
    // Any associated flow contexts must be removed before
    // a callout can be successfully unregistered.
    //
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> to do DDProxyRemoveFlows\n");
    DDProxyRemoveFlows();
 
    if (IsListEmpty(&gPacketQueue))
@@ -819,7 +1118,10 @@ EvtDriverUnload(
 
    ObDereferenceObject(gThreadObj);
 
-   DDProxyUnregisterCallouts();
+   //DDProxyUnregisterCallouts();
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> to do MaoUnregisterCallouts\n");
+   MaoUnregisterCallouts();
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> done MaoUnregisterCallouts\n");
 
    FwpsInjectionHandleDestroy(gInjectionHandle);
 }
@@ -917,8 +1219,10 @@ DriverEntry(
    NTSTATUS status;
    WDFDRIVER driver;
    WDFDEVICE device;
-   WDFKEY configKey;
+   //WDFKEY configKey;
    HANDLE threadHandle;
+
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> DriverEntry\n");
 
    // Request NX Non-Paged Pool when available
    ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
@@ -935,6 +1239,9 @@ DriverEntry(
       goto Exit;
    }
 
+/*
+* Mao
+* 
    status = WdfDriverOpenParametersRegistryKey(
                driver,
                KEY_READ,
@@ -954,6 +1261,8 @@ DriverEntry(
       status = STATUS_DEVICE_CONFIGURATION_ERROR;
       goto Exit;
    }
+
+
 
    //
    // To proxy UDP traffic, a new destination port or a pair of inspect and
@@ -983,6 +1292,8 @@ DriverEntry(
          goto Exit;
       }
    }
+*/
+
 
    status = FwpsInjectionHandleCreate(
                AF_UNSPEC,
@@ -994,6 +1305,7 @@ DriverEntry(
    {
       goto Exit;
    }
+
 
    InitializeListHead(&gFlowList);
    KeInitializeSpinLock(&gFlowListLock);   
@@ -1008,12 +1320,16 @@ DriverEntry(
 
    gWdmDevice = WdfDeviceWdmGetDeviceObject(device);
    
-   status = DDProxyRegisterCallouts(gWdmDevice);
+   //status = DDProxyRegisterCallouts(gWdmDevice);
 
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> to do MaoRegisterCallouts\n");
+   status = MaoRegisterCallouts(gWdmDevice);
    if (!NT_SUCCESS(status))
    {
       goto Exit;
    }
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_ERROR_LEVEL, "--> done MaoRegisterCallouts --- %d\n", status);
+
 
    status = PsCreateSystemThread(
                &threadHandle,
@@ -1048,7 +1364,8 @@ Exit:
    {
       if (gEngineHandle != NULL)
       {
-         DDProxyUnregisterCallouts();
+         //DDProxyUnregisterCallouts();
+         MaoUnregisterCallouts();
       }
       if (gInjectionHandle != NULL)
       {
